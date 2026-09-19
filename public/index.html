@@ -3,29 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Instagram Profile Lookup</title>
+    <title>Instagram Profile & Posts Downloader</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { background-color: #0d1117; color: #c9d1d9; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
-        .card { background: #161b22; padding: 25px; border-radius: 12px; width: 100%; max-width: 420px; border: 1px solid #30363d; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+        .card { background: #161b22; padding: 25px; border-radius: 12px; width: 100%; max-width: 520px; border: 1px solid #30363d; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
         h1 { font-size: 1.4rem; text-align: center; margin-bottom: 20px; color: #f0f6fc; }
         .search-box { display: flex; gap: 8px; margin-bottom: 20px; }
         input { flex: 1; padding: 12px; border-radius: 6px; border: 1px solid #30363d; background: #0d1117; color: #fff; font-size: 0.95rem; outline: none; }
         button { padding: 12px 18px; border-radius: 6px; border: none; background: #238636; color: white; font-weight: 600; cursor: pointer; transition: 0.2s; }
         button:hover { background: #2ea043; }
+        
         .result { background: #0d1117; border-radius: 8px; padding: 15px; border: 1px solid #30363d; display: none; margin-top: 15px; }
         .user-head { display: flex; align-items: center; gap: 15px; margin-bottom: 12px; }
-        .avatar { width: 55px; height: 55px; border-radius: 50%; border: 2px solid #388bfd; object-fit: cover; }
-        .stats { display: flex; justify-content: space-around; background: #161b22; padding: 10px; border-radius: 6px; text-align: center; margin-top: 12px; border: 1px solid #30363d; }
+        .avatar { width: 65px; height: 65px; border-radius: 50%; border: 2px solid #388bfd; object-fit: cover; }
+        
+        .btn-download { display: inline-block; padding: 6px 12px; background: #238636; color: #fff; text-decoration: none; border-radius: 5px; font-size: 0.8rem; font-weight: bold; margin-top: 6px; cursor: pointer; border: none; }
+        .btn-download:hover { background: #2ea043; }
+        
+        .stats { display: flex; justify-content: space-around; background: #161b22; padding: 10px; border-radius: 6px; text-align: center; margin: 15px 0; border: 1px solid #30363d; }
         .stat-val { font-size: 1.1rem; font-weight: bold; color: #58a6ff; }
         .stat-lbl { font-size: 0.75rem; color: #8b949e; margin-top: 2px; }
+        
+        .posts-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px; }
+        .post-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+        .post-card img { width: 100%; height: 160px; object-fit: cover; }
+        .post-card-body { padding: 8px; text-align: center; }
+
         .error { background: rgba(248, 81, 73, 0.15); border: 1px solid #f85149; color: #ff7b72; padding: 10px; border-radius: 6px; font-size: 0.85rem; display: none; margin-top: 10px; }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <h1>📸 Instagram Lookup</h1>
+        <h1>📸 Instagram Lookup & Downloader</h1>
         <div class="search-box">
             <input type="text" id="username" placeholder="Enter handle (e.g. nike)">
             <button onclick="searchUser()">Search</button>
@@ -39,6 +50,7 @@
                 <div>
                     <h2 id="fullName" style="font-size: 1.1rem; color: #fff;"></h2>
                     <p id="userHandle" style="color: #8b949e; font-size: 0.85rem;"></p>
+                    <button id="dlProfileBtn" class="btn-download">⬇️ Download HD DP</button>
                 </div>
             </div>
             <p id="bio" style="font-size: 0.85rem; line-height: 1.4; color: #8b949e;"></p>
@@ -57,6 +69,9 @@
                     <div class="stat-lbl">Posts</div>
                 </div>
             </div>
+
+            <h3 style="font-size: 1rem; color: #f0f6fc; margin-top: 15px;">Recent Posts</h3>
+            <div id="postsGrid" class="posts-grid"></div>
         </div>
     </div>
 
@@ -76,7 +91,6 @@
             }
 
             try {
-                // Hits your serverless backend route
                 const res = await fetch(`/api/lookup?handle=${encodeURIComponent(handle)}`);
                 const data = await res.json();
 
@@ -84,16 +98,49 @@
                     throw new Error(data.error || data.message || `HTTP ${res.status}`);
                 }
 
-                const user = data.data;
+                const user = data.profile;
+                const posts = data.posts || [];
+
+                // Full HQ DP URL
+                const hqAvatar = user.hd_profile_pic_url_info?.url || user.profile_pic_url_hd || user.profile_pic_url;
 
                 document.getElementById('fullName').innerText = user.full_name || user.username;
                 document.getElementById('userHandle').innerText = '@' + user.username;
-                document.getElementById('avatar').src = user.profile_pic_url || 'https://via.placeholder.com/60';
+                document.getElementById('avatar').src = hqAvatar || 'https://via.placeholder.com/65';
                 document.getElementById('bio').innerText = user.biography || 'No bio available';
 
                 document.getElementById('followers').innerText = (user.followers || 0).toLocaleString();
                 document.getElementById('following').innerText = (user.following || 0).toLocaleString();
                 document.getElementById('posts').innerText = (user.posts_count || user.media_count || 0).toLocaleString();
+
+                // Set DP Download Button
+                document.getElementById('dlProfileBtn').onclick = () => {
+                    window.open(`/api/lookup?action=download&url=${encodeURIComponent(hqAvatar)}`, '_blank');
+                };
+
+                // Render Posts
+                const postsGrid = document.getElementById('postsGrid');
+                postsGrid.innerHTML = '';
+
+                if (posts.length === 0) {
+                    postsGrid.innerHTML = '<p style="grid-column: span 2; font-size: 0.85rem; color: #8b949e; text-align: center;">No public posts available.</p>';
+                } else {
+                    posts.forEach(post => {
+                        // High Quality Image URL
+                        const imgUrl = post.display_url || post.image_versions2?.candidates?.[0]?.url || post.thumbnail_src;
+                        if (!imgUrl) return;
+
+                        const postEl = document.createElement('div');
+                        postEl.className = 'post-card';
+                        postEl.innerHTML = `
+                            <img src="${imgUrl}" alt="Post">
+                            <div class="post-card-body">
+                                <button class="btn-download" onclick="window.open('/api/lookup?action=download&url=${encodeURIComponent(imgUrl)}', '_blank')">⬇️ Download HQ</button>
+                            </div>
+                        `;
+                        postsGrid.appendChild(postEl);
+                    });
+                }
 
                 resultBox.style.display = 'block';
             } catch (err) {
