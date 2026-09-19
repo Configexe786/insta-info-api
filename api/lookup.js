@@ -2,7 +2,7 @@ export default async function handler(req, res) {
     const { handle, action, url } = req.query;
     const apiKey = process.env.INSTAGRAMAPI_KEY || "ig_live_arjwVZU9uZ1iRZ1U-YbmtTPqvH6ZXxYQ";
 
-    // Media Download Proxy (Photos & Videos)
+    // Media & DP Download Proxy
     if (action === 'download' && url) {
         try {
             const mediaUrl = decodeURIComponent(url);
@@ -18,7 +18,7 @@ export default async function handler(req, res) {
             const ext = contentType.includes('mp4') || mediaUrl.includes('.mp4') ? 'mp4' : 'jpg';
 
             res.setHeader('Content-Type', contentType);
-            res.setHeader('Content-Disposition', `attachment; filename="instagram_media.${ext}"`);
+            res.setHeader('Content-Disposition', `attachment; filename="instagram_download.${ext}"`);
             return res.send(buffer);
         } catch (e) {
             return res.status(500).json({ error: "Download failed" });
@@ -42,13 +42,19 @@ export default async function handler(req, res) {
 
         const user = profileData.data || {};
 
-        // HD Profile Pic Logic
-        let hqAvatar = user.hd_profile_pic_url_info?.url || user.profile_pic_url_hd || user.profile_pic_url || '';
+        // Extract FULL HD Original Profile Pic (Bypassing low-res thumbnails)
+        let rawAvatar = user.hd_profile_pic_url_info?.url || user.profile_pic_url_hd || user.profile_pic_url || '';
+        let hqAvatar = rawAvatar;
+
         if (hqAvatar) {
-            hqAvatar = hqAvatar.replace(/\/s\d+x\d+\//, '/').replace(/stp=dst-jpg_s\d+x\d+/, 'stp=dst-jpg');
+            // Strip dimension filters to get original HD asset
+            hqAvatar = hqAvatar
+                .replace(/\/s\d+x\d+\//, '/')
+                .replace(/\/vp\/[a-f0-9]+\//, '/')
+                .replace(/stp=dst-jpg_s\d+x\d+/, 'stp=dst-jpg');
         }
 
-        // 2. Fetch Posts & Reels simultaneously
+        // 2. Fetch Posts & Reels Parallelly
         const [postsRes, reelsRes] = await Promise.allSettled([
             fetch(`https://api.instagramapi.dev/v1/profile/posts?handle=${encodeURIComponent(handle)}`, { headers: authHeader }),
             fetch(`https://api.instagramapi.dev/v1/profile/reels?handle=${encodeURIComponent(handle)}`, { headers: authHeader })
@@ -56,21 +62,19 @@ export default async function handler(req, res) {
 
         let allMedia = [];
 
-        // Parse Posts
         if (postsRes.status === 'fulfilled' && postsRes.value.ok) {
             const pData = await postsRes.value.json();
             const items = pData.data?.items || (Array.isArray(pData.data) ? pData.data : []);
             allMedia.push(...items);
         }
 
-        // Parse Reels
         if (reelsRes.status === 'fulfilled' && reelsRes.value.ok) {
             const rData = await reelsRes.value.json();
             const items = rData.data?.items || (Array.isArray(rData.data) ? rData.data : []);
             allMedia.push(...items);
         }
 
-        // Duplicate IDs remove karo
+        // Remove duplicate items
         const uniqueMedia = [];
         const seenIds = new Set();
 
