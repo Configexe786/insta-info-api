@@ -2,7 +2,7 @@ export default async function handler(req, res) {
     const { handle, action, url } = req.query;
     const apiKey = process.env.INSTAGRAMAPI_KEY || "ig_live_arjwVZU9uZ1iRZ1U-YbmtTPqvH6ZXxYQ";
 
-    // Media & HD DP Direct Download Proxy
+    // Media & HD DP Proxy Download Route
     if (action === 'download' && url) {
         try {
             const mediaUrl = decodeURIComponent(url);
@@ -34,49 +34,60 @@ export default async function handler(req, res) {
     try {
         const authHeader = { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' };
 
-        // 1. Fetch Main Profile Info & Media
+        // Fetch Data Parallelly
         const [profileRes, postsRes, reelsRes] = await Promise.allSettled([
             fetch(`https://api.instagramapi.dev/v1/profile?handle=${encodeURIComponent(cleanHandle)}`, { headers: authHeader }),
             fetch(`https://api.instagramapi.dev/v1/profile/posts?handle=${encodeURIComponent(cleanHandle)}`, { headers: authHeader }),
             fetch(`https://api.instagramapi.dev/v1/profile/reels?handle=${encodeURIComponent(cleanHandle)}`, { headers: authHeader })
         ]);
 
-        let user = {};
+        let rawUser = {};
         if (profileRes.status === 'fulfilled' && profileRes.value.ok) {
             const profileData = await profileRes.value.json();
-            user = profileData.data || profileData || {};
+            rawUser = profileData.data || profileData.user || profileData || {};
         }
 
-        // Exact Profile Picture URL Extraction (Direct CDN links, no Unavatar)
-        let hqAvatar = user.hd_profile_pic_url_info?.url || 
-                       user.profile_pic_url_hd || 
-                       user.hd_profile_pic_versions?.[0]?.url || 
-                       user.profile_pic_url || '';
+        // Handle Safe Field Mapping (Fix for undefined values)
+        const username = rawUser.username || rawUser.handle || cleanHandle;
+        const fullName = rawUser.full_name || rawUser.name || rawUser.username || cleanHandle;
+        const biography = rawUser.biography || rawUser.bio || 'No bio available';
+        const followers = rawUser.follower_count ?? rawUser.followers ?? rawUser.edge_followed_by?.count ?? 0;
+        const following = rawUser.following_count ?? rawUser.following ?? rawUser.edge_follow?.count ?? 0;
+        const postsCount = rawUser.media_count ?? rawUser.posts_count ?? rawUser.posts ?? rawUser.edge_owner_to_timeline_media?.count ?? 0;
 
-        // Remove dimensions restrictions from Instagram CDN string to get full size image
-        if (hqAvatar && hqAvatar.includes('instagram')) {
-            hqAvatar = hqAvatar
+        // DP URL Resolution Strategy
+        let rawAvatar = rawUser.hd_profile_pic_url_info?.url || 
+                         rawUser.profile_pic_url_hd || 
+                         rawUser.hd_profile_pic_versions?.[0]?.url || 
+                         rawUser.profile_pic_url || '';
+
+        if (!rawAvatar) {
+            rawAvatar = `https://instasaver.io/api/v1/dp?username=${encodeURIComponent(cleanHandle)}`;
+        }
+
+        // Clean Resolution Limits from Instagram CDN links
+        if (rawAvatar && rawAvatar.includes('instagram')) {
+            rawAvatar = rawAvatar
                 .replace(/\/s\d+x\d+\//, '/')
                 .replace(/\/vp\/[a-f0-9]+\//, '/')
                 .replace(/stp=dst-jpg_s\d+x\d+/, 'stp=dst-jpg');
         }
 
-        // 2. Media Parser (Posts & Reels)
+        // Parse Posts & Reels safely
         let allMedia = [];
 
         if (postsRes.status === 'fulfilled' && postsRes.value.ok) {
             const pData = await postsRes.value.json();
-            const items = pData.data?.items || (Array.isArray(pData.data) ? pData.data : []);
+            const items = pData.data?.items || pData.items || (Array.isArray(pData.data) ? pData.data : []);
             allMedia.push(...items);
         }
 
         if (reelsRes.status === 'fulfilled' && reelsRes.value.ok) {
             const rData = await reelsRes.value.json();
-            const items = rData.data?.items || (Array.isArray(rData.data) ? rData.data : []);
+            const items = rData.data?.items || rData.items || (Array.isArray(rData.data) ? rData.data : []);
             allMedia.push(...items);
         }
 
-        // Deduplicate Media List
         const uniqueMedia = [];
         const seenIds = new Set();
 
@@ -89,7 +100,15 @@ export default async function handler(req, res) {
         }
 
         return res.status(200).json({
-            profile: { ...user, hq_avatar: hqAvatar },
+            profile: {
+                username,
+                full_name: fullName,
+                biography,
+                followers,
+                following,
+                posts_count: postsCount,
+                hq_avatar: rawAvatar
+            },
             media: uniqueMedia
         });
 
