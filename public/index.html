@@ -24,7 +24,9 @@
 
         .result { background: #0d1117; border-radius: 8px; padding: 15px; border: 1px solid #30363d; display: none; margin-top: 15px; }
         .user-head { display: flex; align-items: center; gap: 15px; margin-bottom: 12px; }
-        .avatar { width: 80px; height: 80px; border-radius: 50%; border: 2px solid #388bfd; object-fit: cover; }
+        
+        .avatar-wrapper { width: 80px; height: 80px; min-width: 80px; min-height: 80px; border-radius: 50%; border: 2px solid #388bfd; overflow: hidden; background: #161b22; display: flex; align-items: center; justify-content: center; }
+        .avatar { width: 100%; height: 100%; object-fit: cover; }
         
         .btn-download { display: inline-block; width: 100%; text-align: center; padding: 8px 12px; background: #238636; color: #fff; text-decoration: none; border-radius: 5px; font-size: 0.8rem; font-weight: bold; margin-top: 6px; cursor: pointer; border: none; }
         .btn-download:hover { background: #2ea043; }
@@ -64,8 +66,8 @@
 
         <div id="resultBox" class="result">
             <div class="user-head">
-                <a id="avatarLink" target="_blank">
-                    <img id="avatar" class="avatar" src="" alt="Avatar">
+                <a id="avatarLink" target="_blank" class="avatar-wrapper">
+                    <img id="avatar" class="avatar" src="" alt="DP">
                 </a>
                 <div style="flex: 1;">
                     <h2 id="fullName" style="font-size: 1.1rem; color: #fff;"></h2>
@@ -116,6 +118,16 @@
                 return;
             }
 
+            // Reset Old UI Values completely on every search
+            document.getElementById('fullName').innerText = '';
+            document.getElementById('userHandle').innerText = '';
+            document.getElementById('bio').innerText = '';
+            document.getElementById('avatar').src = '';
+            document.getElementById('followers').innerText = '0';
+            document.getElementById('following').innerText = '0';
+            document.getElementById('posts').innerText = '0';
+            document.getElementById('postsGrid').innerHTML = '';
+
             loaderBox.style.display = 'block';
             searchBtn.disabled = true;
 
@@ -124,28 +136,25 @@
                 const data = await res.json();
 
                 if (!res.ok) {
-                    throw new Error(data.error || data.message || `HTTP ${res.status}`);
+                    throw new Error(data.error || data.details || `HTTP ${res.status}`);
                 }
 
                 const user = data.profile || {};
                 const mediaList = data.media || [];
 
-                const avatarUrl = user.hq_avatar || user.profile_pic_url || '';
+                document.getElementById('fullName').innerText = user.full_name || handle;
+                document.getElementById('userHandle').innerText = '@' + (user.username || handle);
+                document.getElementById('bio').innerText = user.biography || 'No bio available';
 
-                document.getElementById('fullName').innerText = user.full_name || user.username;
-                document.getElementById('userHandle').innerText = '@' + user.username;
-                
+                document.getElementById('followers').innerText = Number(user.followers || 0).toLocaleString();
+                document.getElementById('following').innerText = Number(user.following || 0).toLocaleString();
+                document.getElementById('posts').innerText = Number(user.posts_count || 0).toLocaleString();
+
+                const avatarUrl = user.hq_avatar || '';
                 if (avatarUrl) {
                     document.getElementById('avatar').src = avatarUrl;
                     document.getElementById('avatarLink').href = avatarUrl;
                 }
-                
-                document.getElementById('bio').innerText = user.biography || 'No bio available';
-
-                const totalPosts = user.posts_count ?? user.posts ?? user.media_count ?? 0;
-                document.getElementById('followers').innerText = (user.followers || 0).toLocaleString();
-                document.getElementById('following').innerText = (user.following || 0).toLocaleString();
-                document.getElementById('posts').innerText = totalPosts.toLocaleString();
 
                 document.getElementById('dlProfileBtn').onclick = () => {
                     window.open(`/api/lookup?action=download&url=${encodeURIComponent(avatarUrl)}`, '_blank');
@@ -154,7 +163,7 @@
                 const postsGrid = document.getElementById('postsGrid');
                 postsGrid.innerHTML = '';
 
-                if (mediaList.length === 0) {
+                if (!mediaList || mediaList.length === 0) {
                     postsGrid.innerHTML = `<div class="no-posts">No media/reels found for this account.</div>`;
                 } else {
                     mediaList.forEach(item => {
