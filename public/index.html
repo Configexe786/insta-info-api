@@ -6,17 +6,26 @@
     <title>Instagram Lookup & Downloader</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        body { background-color: #0d1117; color: #c9d1d9; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        body { background-color: #0d1117; color: #c9d1d9; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        
         .card { background: #161b22; padding: 25px; border-radius: 12px; width: 100%; max-width: 520px; border: 1px solid #30363d; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
         h1 { font-size: 1.4rem; text-align: center; margin-bottom: 20px; color: #f0f6fc; }
+        
         .search-box { display: flex; gap: 8px; margin-bottom: 20px; }
         input { flex: 1; padding: 12px; border-radius: 6px; border: 1px solid #30363d; background: #0d1117; color: #fff; font-size: 0.95rem; outline: none; }
         button { padding: 12px 18px; border-radius: 6px; border: none; background: #238636; color: white; font-weight: 600; cursor: pointer; transition: 0.2s; }
         button:hover { background: #2ea043; }
-        
+        button:disabled { background: #1e4a27; cursor: not-allowed; }
+
+        /* Loader CSS Animation */
+        .loader-box { display: none; text-align: center; padding: 25px 10px; }
+        .spinner { width: 40px; height: 40px; border: 4px solid #30363d; border-top: 4px solid #388bfd; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 12px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .loader-text { font-size: 0.95rem; color: #58a6ff; font-weight: 600; }
+
         .result { background: #0d1117; border-radius: 8px; padding: 15px; border: 1px solid #30363d; display: none; margin-top: 15px; }
         .user-head { display: flex; align-items: center; gap: 15px; margin-bottom: 12px; }
-        .avatar { width: 75px; height: 75px; border-radius: 50%; border: 2px solid #388bfd; object-fit: cover; }
+        .avatar { width: 75px; height: 75px; border-radius: 50%; border: 2px solid #388bfd; object-fit: cover; cursor: pointer; }
         
         .btn-download { display: inline-block; width: 100%; text-align: center; padding: 8px 12px; background: #238636; color: #fff; text-decoration: none; border-radius: 5px; font-size: 0.8rem; font-weight: bold; margin-top: 6px; cursor: pointer; border: none; }
         .btn-download:hover { background: #2ea043; }
@@ -33,6 +42,11 @@
 
         .no-posts { grid-column: span 2; text-align: center; color: #8b949e; font-size: 0.85rem; padding: 15px 0; }
         .error { background: rgba(248, 81, 73, 0.15); border: 1px solid #f85149; color: #ff7b72; padding: 10px; border-radius: 6px; font-size: 0.85rem; display: none; margin-top: 10px; }
+
+        /* Footer Watermark */
+        .footer { margin-top: 20px; text-align: center; font-size: 0.85rem; color: #8b949e; }
+        .footer a { color: #58a6ff; text-decoration: none; font-weight: bold; }
+        .footer a:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -41,15 +55,21 @@
         <h1>📸 Instagram Lookup & Downloader</h1>
         <div class="search-box">
             <input type="text" id="username" placeholder="Enter handle (e.g. maximmuofficial)">
-            <button onclick="searchUser()">Search</button>
+            <button id="searchBtn" onclick="searchUser()">Search</button>
         </div>
 
         <div id="errorBox" class="error"></div>
 
+        <!-- Animated Loading Box -->
+        <div id="loaderBox" class="loader-box">
+            <div class="spinner"></div>
+            <div class="loader-text">Instagram data loading...</div>
+        </div>
+
         <div id="resultBox" class="result">
             <div class="user-head">
                 <a id="avatarLink" target="_blank">
-                    <img id="avatar" class="avatar" src="" alt="Avatar" title="Click to open full size">
+                    <img id="avatar" class="avatar" src="" alt="Avatar" title="Click to view full image">
                 </a>
                 <div style="flex: 1;">
                     <h2 id="fullName" style="font-size: 1.1rem; color: #fff;"></h2>
@@ -79,11 +99,18 @@
         </div>
     </div>
 
+    <!-- Watermark -->
+    <div class="footer">
+        Developer: <strong>Teamexe</strong> | Telegram: <a href="https://t.me/Configexe" target="_blank">@Configexe</a> | © 2026
+    </div>
+
     <script>
         async function searchUser() {
             const handle = document.getElementById('username').value.trim();
             const errorBox = document.getElementById('errorBox');
             const resultBox = document.getElementById('resultBox');
+            const loaderBox = document.getElementById('loaderBox');
+            const searchBtn = document.getElementById('searchBtn');
 
             errorBox.style.display = 'none';
             resultBox.style.display = 'none';
@@ -93,6 +120,10 @@
                 errorBox.style.display = 'block';
                 return;
             }
+
+            // Show Loader Animation & Disable Button
+            loaderBox.style.display = 'block';
+            searchBtn.disabled = true;
 
             try {
                 const res = await fetch(`/api/lookup?handle=${encodeURIComponent(handle)}`);
@@ -171,6 +202,10 @@
             } catch (err) {
                 errorBox.innerText = "Error: " + err.message;
                 errorBox.style.display = 'block';
+            } finally {
+                // Hide Loader & Enable Button
+                loaderBox.style.display = 'none';
+                searchBtn.disabled = false;
             }
         }
     </script>
