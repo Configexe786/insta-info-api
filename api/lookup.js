@@ -2,13 +2,13 @@ export default async function handler(req, res) {
     const { handle, action, url } = req.query;
     const apiKey = process.env.INSTAGRAMAPI_KEY || "ig_live_arjwVZU9uZ1iRZ1U-YbmtTPqvH6ZXxYQ";
 
-    // Media & DP Download Proxy
+    // Media & HD DP Direct Download Proxy
     if (action === 'download' && url) {
         try {
             const mediaUrl = decodeURIComponent(url);
             const imageRes = await fetch(mediaUrl, {
                 headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                 }
             });
             const arrayBuffer = await imageRes.arrayBuffer();
@@ -29,37 +29,62 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Username is required" });
     }
 
+    const cleanHandle = handle.trim().replace('@', '');
+
     try {
         const authHeader = { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' };
 
-        // 1. Fetch Profile Info
-        const profileRes = await fetch(`https://api.instagramapi.dev/v1/profile?handle=${encodeURIComponent(handle)}`, { headers: authHeader });
-        const profileData = await profileRes.json();
+        // 1. Fetch Main Profile Info & Media (Posts + Reels)
+        const [profileRes, postsRes, reelsRes] = await Promise.allSettled([
+            fetch(`https://api.instagramapi.dev/v1/profile?handle=${encodeURIComponent(cleanHandle)}`, { headers: authHeader }),
+            fetch(`https://api.instagramapi.dev/v1/profile/posts?handle=${encodeURIComponent(cleanHandle)}`, { headers: authHeader }),
+            fetch(`https://api.instagramapi.dev/v1/profile/reels?handle=${encodeURIComponent(cleanHandle)}`, { headers: authHeader })
+        ]);
 
-        if (!profileRes.ok) {
-            return res.status(profileRes.status).json(profileData);
+        let user = {};
+        if (profileRes.status === 'fulfilled' && profileRes.value.ok) {
+            const profileData = await profileRes.value.json();
+            user = profileData.data || {};
         }
 
-        const user = profileData.data || {};
+        // 2. Fetch Full HD DP from InstaSaver.io Pipeline
+        let hqAvatar = '';
 
-        // Extract FULL HD Original Profile Pic (Bypassing low-res thumbnails)
-        let rawAvatar = user.hd_profile_pic_url_info?.url || user.profile_pic_url_hd || user.profile_pic_url || '';
-        let hqAvatar = rawAvatar;
+        try {
+            // Primary Scraper Request matching instasaver.io
+            const saverRes = await fetch(`https://instasaver.io/api/v1/dp`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+                },
+                body: JSON.stringify({ username: cleanHandle, url: `https://www.instagram.com/${cleanHandle}/` })
+            });
 
-        if (hqAvatar) {
-            // Strip dimension filters to get original HD asset
+            if (saverRes.ok) {
+                const sData = await saverRes.json();
+                hqAvatar = sData.url || sData.hd_profile_pic_url || sData.data?.url || '';
+            }
+        } catch (e) {
+            console.log("InstaSaver fetch error, relying on high-res fallback");
+        }
+
+        // Reliable High-Resolution Fallbacks
+        if (!hqAvatar) {
+            hqAvatar = user.hd_profile_pic_url_info?.url || 
+                       user.profile_pic_url_hd || 
+                       `https://unavatar.io/instagram/${cleanHandle}?ttl=1d`;
+        }
+
+        // Remove resolution restriction strings from Instagram CDN links
+        if (hqAvatar.includes('instagram')) {
             hqAvatar = hqAvatar
                 .replace(/\/s\d+x\d+\//, '/')
                 .replace(/\/vp\/[a-f0-9]+\//, '/')
                 .replace(/stp=dst-jpg_s\d+x\d+/, 'stp=dst-jpg');
         }
 
-        // 2. Fetch Posts & Reels Parallelly
-        const [postsRes, reelsRes] = await Promise.allSettled([
-            fetch(`https://api.instagramapi.dev/v1/profile/posts?handle=${encodeURIComponent(handle)}`, { headers: authHeader }),
-            fetch(`https://api.instagramapi.dev/v1/profile/reels?handle=${encodeURIComponent(handle)}`, { headers: authHeader })
-        ]);
-
+        // 3. Media Parser (Posts & Reels)
         let allMedia = [];
 
         if (postsRes.status === 'fulfilled' && postsRes.value.ok) {
@@ -74,7 +99,7 @@ export default async function handler(req, res) {
             allMedia.push(...items);
         }
 
-        // Remove duplicate items
+        // Unique Media List Filter
         const uniqueMedia = [];
         const seenIds = new Set();
 
