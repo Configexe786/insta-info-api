@@ -34,7 +34,7 @@ export default async function handler(req, res) {
     try {
         const authHeader = { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' };
 
-        // 1. Fetch Main Profile Info & Media (Posts + Reels)
+        // 1. Fetch Main Profile Info & Media
         const [profileRes, postsRes, reelsRes] = await Promise.allSettled([
             fetch(`https://api.instagramapi.dev/v1/profile?handle=${encodeURIComponent(cleanHandle)}`, { headers: authHeader }),
             fetch(`https://api.instagramapi.dev/v1/profile/posts?handle=${encodeURIComponent(cleanHandle)}`, { headers: authHeader }),
@@ -44,47 +44,24 @@ export default async function handler(req, res) {
         let user = {};
         if (profileRes.status === 'fulfilled' && profileRes.value.ok) {
             const profileData = await profileRes.value.json();
-            user = profileData.data || {};
+            user = profileData.data || profileData || {};
         }
 
-        // 2. Fetch Full HD DP from InstaSaver.io Pipeline
-        let hqAvatar = '';
-
-        try {
-            // Primary Scraper Request matching instasaver.io
-            const saverRes = await fetch(`https://instasaver.io/api/v1/dp`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-                },
-                body: JSON.stringify({ username: cleanHandle, url: `https://www.instagram.com/${cleanHandle}/` })
-            });
-
-            if (saverRes.ok) {
-                const sData = await saverRes.json();
-                hqAvatar = sData.url || sData.hd_profile_pic_url || sData.data?.url || '';
-            }
-        } catch (e) {
-            console.log("InstaSaver fetch error, relying on high-res fallback");
-        }
-
-        // Reliable High-Resolution Fallbacks
-        if (!hqAvatar) {
-            hqAvatar = user.hd_profile_pic_url_info?.url || 
+        // Exact Profile Picture URL Extraction (Direct CDN links, no Unavatar)
+        let hqAvatar = user.hd_profile_pic_url_info?.url || 
                        user.profile_pic_url_hd || 
-                       `https://unavatar.io/instagram/${cleanHandle}?ttl=1d`;
-        }
+                       user.hd_profile_pic_versions?.[0]?.url || 
+                       user.profile_pic_url || '';
 
-        // Remove resolution restriction strings from Instagram CDN links
-        if (hqAvatar.includes('instagram')) {
+        // Remove dimensions restrictions from Instagram CDN string to get full size image
+        if (hqAvatar && hqAvatar.includes('instagram')) {
             hqAvatar = hqAvatar
                 .replace(/\/s\d+x\d+\//, '/')
                 .replace(/\/vp\/[a-f0-9]+\//, '/')
                 .replace(/stp=dst-jpg_s\d+x\d+/, 'stp=dst-jpg');
         }
 
-        // 3. Media Parser (Posts & Reels)
+        // 2. Media Parser (Posts & Reels)
         let allMedia = [];
 
         if (postsRes.status === 'fulfilled' && postsRes.value.ok) {
@@ -99,7 +76,7 @@ export default async function handler(req, res) {
             allMedia.push(...items);
         }
 
-        // Unique Media List Filter
+        // Deduplicate Media List
         const uniqueMedia = [];
         const seenIds = new Set();
 
